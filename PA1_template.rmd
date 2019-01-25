@@ -1,0 +1,94 @@
+---
+title: "Reproducible Research Course Project 1"
+output: html_document
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Reading Data and Preprocessing
+
+Data is read from a local folder, and the date is converted to a POSIXct format.
+
+``` {r Preprocessing}
+library(lubridate)
+activity <- read.csv("./activity.csv", header = TRUE)
+activity$date <- ymd(activity$date)
+```
+
+## Totals, Mean and Median each day
+
+Totals are calculated for each day and a histogram is plotted using the base plotting system.
+
+``` {r}
+library(dplyr)
+bydays <- group_by(activity[!is.na(activity$steps),], date)
+totals <- summarize(bydays, total_steps = sum(steps, na.rm = TRUE))
+hist(totals$total_steps, xlab = "Steps Per Day", main = "Frequency of Total Steps Per Day")
+
+mean_steps <- mean(totals$total_steps)
+median_steps <- median(totals$total_steps)
+
+```
+
+The mean number of steps each day is `r mean_steps` and the median number of steps each day is `r median_steps`.
+
+## Average Daily Activity Pattern
+
+```{r Intervals}
+byinterval <- group_by(activity, interval)
+intervalmeans <- summarize(byinterval, mean_steps = mean(steps, na.rm = TRUE))
+with(intervalmeans, plot(interval, mean_steps, xlab = "Time Interval",
+                         ylab = "Mean Steps", 
+                         main = "Mean Steps Per Time Interval for All Days"))
+maxtime <- intervalmeans$interval[which.max(intervalmeans$mean_steps)]
+```
+
+The interval with the largest mean number of steps is `r maxtime`.
+
+## Imputing missing values
+
+To impute missing values, each missing value will be replaced with the mean for that time interval, as calculated in the above intervalmeans table.
+
+```{r Impute Values}
+library(plyr)
+missing <- sum(as.numeric(is.na(activity$steps)))
+new_activity <- ddply(activity, .(interval), mutate, intervalmeans = mean(steps, na.rm = TRUE))
+new_activity$steps <- ifelse(is.na(new_activity$steps), new_activity$intervalmeans, new_activity$steps) 
+new_totals = new_activity %>% group_by(date) %>% summarise_at(c("steps"), funs(sum))
+hist(new_totals$steps, xlab = "Steps Per Day", main = "Frequency of Total Steps Per Day")
+new_mean_steps <- mean(totals$total_steps)
+new_median_steps <- median(totals$total_steps)
+
+```
+
+There are `r missing` missing values in the activity data set. 
+
+The mean number of steps each day is `r new_mean_steps` and the median number of steps each day is `r new_median_steps`. These are not substantially different from the mean and median with NA values removed.
+
+## Weekdays Versus Weekends
+
+The graphs below show the difference in the mean steps per 5-minute interval averaged over all weekdays (top) and weekends (bottom).
+
+``` {r Weekday versus Weekend}
+
+new_activity <- mutate(new_activity, daytype = factor(1*(weekdays(date) %in% c("Sunday", "Saturday")), labels = c("weekday", "weekend")))
+
+weekdays <- subset(new_activity, daytype == "weekday")
+weekends <- subset(new_activity, daytype == "weekend")
+
+weekday_byinterval <- group_by(weekdays, interval)
+weekend_byinterval <- group_by(weekends, interval)
+
+weekday_intervalmeans <- weekday_byinterval %>% group_by(interval) %>%
+        summarise_at(c("steps"), funs(mean))
+weekend_intervalmeans <- weekend_byinterval %>% group_by(interval) %>%
+        summarise_at(c("steps"), funs(mean))
+
+par(mfrow = c(2, 1), mar = c(5,4,2,1))
+with(weekday_intervalmeans, plot(interval, steps, type = "l", main = "Weekday",
+                                 ylab = "Mean Steps", xlab = "Interval"))
+with(weekend_intervalmeans, plot(interval, steps, type = "l", main = "Weekend",
+                                 ylab = "Mean Steps", xlab = "Interval"))
+```
